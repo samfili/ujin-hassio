@@ -206,18 +206,12 @@ GET /api/devices/wss/?token=TOKEN&app=ujin&platform=ios&area_guid=GUID
   "command": "devices->wss",
   "error": 0,
   "data": {
-    "wss": ["wss://srvXXXXX.ujin.pro:11019"]
+    "wss": ["wss://server.example.com:port"]
   }
 }
 ```
 
 **Примечание:** WebSocket URL уникален для каждого пользователя и возвращается в массиве `wss`.
-
-**WebSocket соединение:**
-```
-wss://srvXXXXX.ujin.pro:11019/
-Status: 101 Switching Protocols
-```
 
 ## Дополнительные endpoints
 
