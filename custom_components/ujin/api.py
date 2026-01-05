@@ -1,0 +1,262 @@
+"""Ujin API Client."""
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Any
+
+import aiohttp
+
+from .const import (
+    API_APP_PARAM,
+    API_AUTH_EMAIL_SEND,
+    API_AUTH_EMAIL_VERIFY,
+    API_AUTH_USER,
+    API_BASE_URL,
+    API_DEVICES_MAIN,
+    API_PLATFORM_PARAM,
+    API_SEND_SIGNAL,
+    HEADER_APP_LANG,
+    HEADER_APP_PLATFORM,
+    HEADER_APP_TYPE,
+    HEADER_APP_VERSION,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+
+class TokenExpiredError(Exception):
+    """Exception raised when API token has expired."""
+    pass
+
+
+class UjinApiClient:
+    """Ujin API Client."""
+
+    def __init__(
+        self,
+        email: str,
+        session: aiohttp.ClientSession | None = None,
+    ) -> None:
+        """Initialize the API client."""
+        self.email = email
+        self._session = session
+        self._token: str | None = None
+        self._area_guid: str | None = None
+        self._base_url = API_BASE_URL
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create aiohttp session."""
+        if self._session is None:
+            self._session = aiohttp.ClientSession()
+        return self._session
+
+    async def send_auth_code(self) -> dict[str, Any]:
+        """Send authentication code to email."""
+        session = await self._get_session()
+
+        try:
+            url = f"{self._base_url}{API_AUTH_EMAIL_SEND}"
+            payload = {
+                "email": self.email,
+                "app": API_APP_PARAM,
+                "platform": API_PLATFORM_PARAM,
+            }
+            headers = {
+                HEADER_APP_TYPE: "mobile",
+                HEADER_APP_PLATFORM: API_PLATFORM_PARAM,
+                HEADER_APP_LANG: "ru-RU",
+                HEADER_APP_VERSION: "2",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
+
+            async with session.post(url, json=payload, headers=headers) as response:
+                data = await response.json()
+                if data.get("error") == 0:
+                    _LOGGER.info("Auth code sent to %s, wait time: %s sec",
+                                self.email, data.get("data", {}).get("time", 0))
+                    return data
+                else:
+                    _LOGGER.error("Failed to send auth code: %s", data.get("message"))
+                    return data
+        except Exception as err:
+            _LOGGER.error("Error sending auth code: %s", err)
+            raise
+
+    async def verify_auth_code(self, code: str) -> bool:
+        """Verify authentication code and get token."""
+        session = await self._get_session()
+
+        try:
+            url = f"{self._base_url}{API_AUTH_EMAIL_VERIFY}"
+            payload = {
+                "email": self.email,
+                "code": code,
+                "app": API_APP_PARAM,
+                "platform": API_PLATFORM_PARAM,
+            }
+            headers = {
+                HEADER_APP_TYPE: "mobile",
+                HEADER_APP_PLATFORM: API_PLATFORM_PARAM,
+                HEADER_APP_LANG: "ru-RU",
+                HEADER_APP_VERSION: "2",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
+
+            async with session.post(url, json=payload, headers=headers) as response:
+                data = await response.json()
+                if data.get("error") == 0:
+                    self._token = data.get("data", {}).get("token")
+                    _LOGGER.info("Successfully authenticated with Ujin API")
+
+                    # Get user profile to retrieve area_guid
+                    await self._get_user_profile()
+                    return True
+                else:
+                    _LOGGER.error("Auth verification failed: %s", data.get("message"))
+                    return False
+        except Exception as err:
+            _LOGGER.error("Error verifying auth code: %s", err)
+            raise
+
+    async def _get_user_profile(self) -> None:
+        """Get user profile and extract area_guid."""
+        session = await self._get_session()
+
+        try:
+            url = f"{self._base_url}{API_AUTH_USER}"
+            params = {
+                "token": self._token,
+                "app": API_APP_PARAM,
+                "platform": API_PLATFORM_PARAM,
+            }
+
+            async with session.get(url, params=params) as response:
+                data = await response.json()
+                # Area GUID will be obtained from device list response
+                _LOGGER.info("User profile retrieved")
+        except Exception as err:
+            _LOGGER.error("Error getting user profile: %s", err)
+
+    async def get_devices(self) -> list[dict[str, Any]]:
+        """Get all devices from Ujin API."""
+        if not self._token:
+            _LOGGER.error("Not authenticated. Call verify_auth_code first.")
+            return []
+
+        session = await self._get_session()
+
+        try:
+            url = f"{self._base_url}{API_DEVICES_MAIN}"
+            params = {
+                "token": self._token,
+                "app": API_APP_PARAM,
+                "platform": API_PLATFORM_PARAM,
+                "co2": "1",
+                "lang": "ru-RU",
+            }
+
+            # Add area_guid if available
+            if self._area_guid:
+                params["area_guid"] = self._area_guid
+
+            async with session.get(url, params=params) as response:
+                data = await response.json()
+                if data.get("error") == 0:
+                    devices_data = data.get("data", {}).get("devices", [])
+                    # Extract devices from the total_list structure
+                    all_devices = []
+                    for device_group in devices_data:
+                        if device_group.get("type") == "total_list":
+                            devices = device_group.get("data", [])
+                            all_devices.extend(devices)
+
+                    # Extract area_guid from response URL if not set
+                    if not self._area_guid:
+                        # Try to get area_guid from the response URL
+                        # The API may have redirected with area_guid in query params
+                        from urllib.parse import urlparse, parse_qs
+                        try:
+                            parsed_url = urlparse(str(response.url))
+                            query_params = parse_qs(parsed_url.query)
+                            if 'area_guid' in query_params:
+                                self._area_guid = query_params['area_guid'][0]
+                                _LOGGER.info("Extracted area_guid: %s", self._area_guid)
+                        except Exception as e:
+                            _LOGGER.debug("Could not extract area_guid from URL: %s", e)
+
+                    _LOGGER.info("Found %d devices", len(all_devices))
+                    return all_devices
+                else:
+                    # Check for token expiration
+                    error_msg = data.get("message", "")
+                    if "token" in error_msg.lower() or "auth" in error_msg.lower():
+                        _LOGGER.error("Token expired or invalid: %s", error_msg)
+                        raise TokenExpiredError(error_msg)
+
+                    _LOGGER.error("Failed to get devices: %s", error_msg)
+                    return []
+        except Exception as err:
+            _LOGGER.error("Error getting devices: %s", err)
+            return []
+
+    async def send_device_command(
+        self, device_id: str, signal: str, state: int
+    ) -> bool:
+        """Send command to device.
+
+        Args:
+            device_id: Device serial number
+            signal: Signal name (e.g., 'rele1', 'rele-w')
+            state: State to set (0 or 1)
+        """
+        if not self._token:
+            _LOGGER.error("Not authenticated")
+            return False
+
+        session = await self._get_session()
+
+        try:
+            url = f"{self._base_url}{API_SEND_SIGNAL}"
+            params = {
+                "serialnumber": device_id,
+                "signal": signal,
+                "state": str(state),
+                "token": self._token,
+                "app": API_APP_PARAM,
+                "platform": API_PLATFORM_PARAM,
+                "uniq_id": "",  # Empty in captured traffic
+            }
+
+            # Add area_guid if available
+            if self._area_guid:
+                params["area_guid"] = self._area_guid
+
+            async with session.get(url, params=params) as response:
+                data = await response.json()
+                if data.get("error") == 0:
+                    _LOGGER.info("Command sent successfully to device %s", device_id)
+                    return True
+                else:
+                    error_msg = data.get("message", "")
+                    # Check for token expiration
+                    if "token" in error_msg.lower() or "auth" in error_msg.lower():
+                        _LOGGER.error("Token expired or invalid: %s", error_msg)
+                        raise TokenExpiredError(error_msg)
+
+                    _LOGGER.error("Failed to send command: %s", error_msg)
+                    return False
+        except Exception as err:
+            _LOGGER.error("Error sending device command: %s", err)
+            return False
+
+    def set_area_guid(self, area_guid: str) -> None:
+        """Set area GUID for API requests."""
+        self._area_guid = area_guid
+
+    async def close(self) -> None:
+        """Close the API session."""
+        if self._session:
+            await self._session.close()

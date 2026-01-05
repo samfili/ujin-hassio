@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Ujin Smart Home",
+        "description": "Enter your Ujin credentials to connect your smart home devices",
+        "data": {
+          "username": "Username or Email",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Ujin API. Please check your internet connection and credentials.",
+      "invalid_auth": "Invalid username or password.",
+      "unknown": "An unexpected error occurred. Please try again."
+    },
+    "abort": {
+      "already_configured": "This Ujin account is already configured."
+    }
+  }
+}
