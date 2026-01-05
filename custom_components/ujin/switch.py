@@ -55,6 +55,8 @@ class UjinSwitch(CoordinatorEntity, SwitchEntity):
         # Initialize optimistic state from device data
         controls = device_data.get("controls", [])
         self._attr_is_on = controls[0].get("value", 0) == 1 if controls else False
+        # Initialize icon from device data
+        self._attr_icon = self._get_icon_for_device(device_data)
 
     @property
     def device_info(self):
@@ -77,11 +79,12 @@ class UjinSwitch(CoordinatorEntity, SwitchEntity):
                 return device.get("status") == "ok"
         return False
 
-    @property
-    def icon(self) -> str:
-        """Return the icon to use in the frontend."""
-        svg = self._device_data.get("svg", "")
-        category = self._device_data.get("category_name", "")
+    def _get_icon_for_device(self, device_data: dict[str, Any]) -> str:
+        """Determine the icon for a device based on its properties."""
+        svg = device_data.get("svg", "")
+        category = device_data.get("category_name", "")
+        name = device_data.get("name", "")
+        model = device_data.get("model", "")
 
         # Map SVG names to MDI icons
         icon_map = {
@@ -90,13 +93,24 @@ class UjinSwitch(CoordinatorEntity, SwitchEntity):
             "waterController": "mdi:water-pump",
         }
 
+        # Check SVG first
         if svg in icon_map:
             return icon_map[svg]
-        elif "вода" in category.lower() or "aqua" in self._attr_name.lower():
+
+        # Check by model
+        if "aqua" in model.lower() or "zld" in model.lower():
             return "mdi:water-pump"
-        elif "освещение" in self._attr_name.lower():
+        elif "din" in model.lower():
+            return "mdi:electric-switch"
+        elif "dim" in model.lower() or "zdm" in model.lower():
+            return "mdi:lightbulb-multiple"
+
+        # Check by category and name
+        if "вода" in category.lower() or "aqua" in name.lower():
+            return "mdi:water-pump"
+        elif "освещение" in name.lower() or "light" in category.lower():
             return "mdi:lightbulb"
-        elif "розетк" in self._attr_name.lower():
+        elif "розетк" in name.lower() or "socket" in category.lower():
             return "mdi:power-socket"
         else:
             return "mdi:toggle-switch"
@@ -140,8 +154,7 @@ class UjinSwitch(CoordinatorEntity, SwitchEntity):
             # Optimistically update state for instant UI feedback
             self._attr_is_on = True
             self.async_write_ha_state()
-            # Request coordinator refresh to sync with real device state
-            await self.coordinator.async_request_refresh()
+            # WebSocket will push real-time update, no need to refresh coordinator
         else:
             _LOGGER.error("Failed to turn on %s", self._attr_name)
 
@@ -162,15 +175,14 @@ class UjinSwitch(CoordinatorEntity, SwitchEntity):
             # Optimistically update state for instant UI feedback
             self._attr_is_on = False
             self.async_write_ha_state()
-            # Request coordinator refresh to sync with real device state
-            await self.coordinator.async_request_refresh()
+            # WebSocket will push real-time update, no need to refresh coordinator
         else:
             _LOGGER.error("Failed to turn off %s", self._attr_name)
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        # Update local state from real coordinator data
+        # Update local state from real coordinator data (from polling or WebSocket)
         for device in self.coordinator.data:
             if (
                 device["id"] == self._device_data["id"]
@@ -180,5 +192,7 @@ class UjinSwitch(CoordinatorEntity, SwitchEntity):
                 if controls:
                     # Sync _attr_is_on with real device state
                     self._attr_is_on = controls[0].get("value", 0) == 1
+                # Update icon if device data changed
+                self._attr_icon = self._get_icon_for_device(device)
                 break
         self.async_write_ha_state()

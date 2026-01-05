@@ -11,6 +11,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import TokenExpiredError, UjinApiClient
 from .const import DOMAIN
+from .websocket import UjinWebSocketClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -90,9 +91,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Fetch initial data
     await coordinator.async_config_entry_first_refresh()
 
+    # Setup WebSocket for real-time updates
+    websocket_client = None
+    try:
+        wss_url = await api_client.get_websocket_url()
+        if wss_url:
+            def handle_websocket_message(data: dict) -> None:
+                """Handle incoming WebSocket message."""
+                try:
+                    # WebSocket messages contain device updates
+                    # Update coordinator data without API call
+                    if "data" in data:
+                        # Parse device updates from WebSocket message
+                        # This will be called from async context, safe to update coordinator
+                        hass.async_create_task(coordinator.async_request_refresh())
+                except Exception as err:
+                    _LOGGER.error("Error handling WebSocket message: %s", err)
+
+            websocket_client = UjinWebSocketClient(
+                url=wss_url,
+                on_message=handle_websocket_message,
+            )
+            # Connect to WebSocket
+            await websocket_client.connect()
+            _LOGGER.info("WebSocket real-time updates enabled")
+        else:
+            _LOGGER.warning("WebSocket URL not available, using polling only")
+    except Exception as err:
+        _LOGGER.error("Failed to setup WebSocket: %s. Falling back to polling.", err)
+
     hass.data[DOMAIN][entry.entry_id] = {
         "api": api_client,
         "coordinator": coordinator,
+        "websocket": websocket_client,
     }
 
     # Setup platforms
@@ -104,6 +135,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        hass.data[DOMAIN].pop(entry.entry_id)
+        # Disconnect WebSocket if active
+        entry_data = hass.data[DOMAIN].pop(entry.entry_id)
+        if websocket_client := entry_data.get("websocket"):
+            await websocket_client.disconnect()
+            _LOGGER.info("WebSocket disconnected")
 
     return unload_ok

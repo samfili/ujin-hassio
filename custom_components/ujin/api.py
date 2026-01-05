@@ -310,6 +310,46 @@ class UjinApiClient:
         """Set area GUID for API requests."""
         self._area_guid = area_guid
 
+    async def get_websocket_url(self) -> str | None:
+        """Get WebSocket URL for real-time updates."""
+        if not self._token:
+            _LOGGER.error("Not authenticated")
+            return None
+
+        session = await self._get_session()
+
+        # Use apartment user_token if available, otherwise fallback to main token
+        token_to_use = self._user_token if self._user_token else self._token
+
+        try:
+            url = f"{self._base_url}{API_DEVICES_WSS}"
+            params = {
+                "token": token_to_use,
+                "app": API_APP_PARAM,
+                "platform": API_PLATFORM_PARAM,
+            }
+
+            if self._area_guid:
+                params["area_guid"] = self._area_guid
+
+            async with session.get(url, params=params) as response:
+                data = await response.json()
+                if data.get("error") == 0:
+                    wss_url = data.get("data", {}).get("url")
+                    if wss_url:
+                        _LOGGER.info("Got WebSocket URL: %s", wss_url)
+                        return wss_url
+                    else:
+                        _LOGGER.error("No WebSocket URL in response")
+                        return None
+                else:
+                    error_msg = data.get("message", "")
+                    _LOGGER.error("Failed to get WebSocket URL: %s", error_msg)
+                    return None
+        except Exception as err:
+            _LOGGER.error("Error getting WebSocket URL: %s", err)
+            return None
+
     async def close(self) -> None:
         """Close the API session."""
         if self._session:
