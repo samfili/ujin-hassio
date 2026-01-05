@@ -1,6 +1,7 @@
 """Switch platform for Ujin Smart Home."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -148,6 +149,8 @@ class UjinSwitch(CoordinatorEntity, SwitchEntity):
         )
 
         if success:
+            # Wait for API to update state before refreshing to prevent UI flicker
+            await asyncio.sleep(2)
             await self.coordinator.async_request_refresh()
         else:
             _LOGGER.error("Failed to turn on %s", self._attr_name)
@@ -166,6 +169,8 @@ class UjinSwitch(CoordinatorEntity, SwitchEntity):
         )
 
         if success:
+            # Wait for API to update state before refreshing to prevent UI flicker
+            await asyncio.sleep(2)
             await self.coordinator.async_request_refresh()
         else:
             _LOGGER.error("Failed to turn off %s", self._attr_name)
