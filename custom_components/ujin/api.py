@@ -15,6 +15,7 @@ from .const import (
     API_BASE_URL,
     API_DEVICES_MAIN,
     API_PLATFORM_PARAM,
+    API_PROFILE_OBJECTS,
     API_SEND_SIGNAL,
     HEADER_APP_LANG,
     HEADER_APP_PLATFORM,
@@ -135,10 +136,55 @@ class UjinApiClient:
 
             async with session.get(url, params=params) as response:
                 data = await response.json()
-                # Area GUID will be obtained from device list response
                 _LOGGER.info("User profile retrieved")
+
+            # Get apartments to extract area_guid
+            await self._get_apartments()
         except Exception as err:
             _LOGGER.error("Error getting user profile: %s", err)
+
+    async def _get_apartments(self) -> list[dict[str, Any]]:
+        """Get list of apartments/flats and extract area_guid."""
+        if not self._token:
+            _LOGGER.error("Not authenticated")
+            return []
+
+        session = await self._get_session()
+
+        try:
+            url = f"{self._base_url}{API_PROFILE_OBJECTS}"
+            params = {
+                "token": self._token,
+                "app": API_APP_PARAM,
+                "platform": API_PLATFORM_PARAM,
+            }
+
+            async with session.get(url, params=params) as response:
+                data = await response.json()
+                _LOGGER.debug("Profile objects response: %s", data)
+
+                if data.get("error") is None or data.get("error") == 0:
+                    # Extract apartments from response
+                    apartments = []
+                    for complex_data in data.get("data", []):
+                        items = complex_data.get("items", [])
+                        apartments.extend(items)
+
+                    _LOGGER.info("Found %d apartment(s)", len(apartments))
+
+                    # Use first apartment's area_guid
+                    if apartments and not self._area_guid:
+                        self._area_guid = apartments[0].get("area_guid")
+                        _LOGGER.info("Extracted area_guid: %s from apartment '%s'",
+                                    self._area_guid, apartments[0].get("title", "Unknown"))
+
+                    return apartments
+                else:
+                    _LOGGER.error("Failed to get apartments: %s", data.get("message"))
+                    return []
+        except Exception as err:
+            _LOGGER.error("Error getting apartments: %s", err)
+            return []
 
     async def get_devices(self) -> list[dict[str, Any]]:
         """Get all devices from Ujin API."""
@@ -178,30 +224,6 @@ class UjinApiClient:
                             devices = device_group.get("data", [])
                             _LOGGER.debug("Found %d devices in total_list", len(devices))
                             all_devices.extend(devices)
-
-                    # Extract area_guid from response if not set
-                    if not self._area_guid:
-                        # Try to get area_guid from apartment_id in response
-                        try:
-                            apartment_id = data.get("data", {}).get("json_rules", {}).get("apartment_id")
-                            if apartment_id:
-                                self._area_guid = str(apartment_id)
-                                _LOGGER.info("Extracted area_guid from apartment_id: %s", self._area_guid)
-                        except Exception as e:
-                            _LOGGER.debug("Could not extract area_guid from apartment_id: %s", e)
-
-                        # Also try from URL params as fallback
-                        if not self._area_guid:
-                            from urllib.parse import urlparse, parse_qs
-                            try:
-                                parsed_url = urlparse(str(response.url))
-                                query_params = parse_qs(parsed_url.query)
-                                _LOGGER.debug("Response URL params: %s", query_params)
-                                if 'area_guid' in query_params:
-                                    self._area_guid = query_params['area_guid'][0]
-                                    _LOGGER.info("Extracted area_guid from URL: %s", self._area_guid)
-                            except Exception as e:
-                                _LOGGER.debug("Could not extract area_guid from URL: %s", e)
 
                     _LOGGER.info("Found %d devices", len(all_devices))
                     return all_devices
