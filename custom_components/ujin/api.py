@@ -164,13 +164,19 @@ class UjinApiClient:
 
             async with session.get(url, params=params) as response:
                 data = await response.json()
+                _LOGGER.debug("API Response: %s", data)
+
                 if data.get("error") == 0:
                     devices_data = data.get("data", {}).get("devices", [])
+                    _LOGGER.debug("Devices data structure: %s", devices_data)
+
                     # Extract devices from the total_list structure
                     all_devices = []
                     for device_group in devices_data:
+                        _LOGGER.debug("Device group type: %s", device_group.get("type"))
                         if device_group.get("type") == "total_list":
                             devices = device_group.get("data", [])
+                            _LOGGER.debug("Found %d devices in total_list", len(devices))
                             all_devices.extend(devices)
 
                     # Extract area_guid from response URL if not set
@@ -181,6 +187,7 @@ class UjinApiClient:
                         try:
                             parsed_url = urlparse(str(response.url))
                             query_params = parse_qs(parsed_url.query)
+                            _LOGGER.debug("Response URL params: %s", query_params)
                             if 'area_guid' in query_params:
                                 self._area_guid = query_params['area_guid'][0]
                                 _LOGGER.info("Extracted area_guid: %s", self._area_guid)
