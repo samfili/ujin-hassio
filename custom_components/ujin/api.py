@@ -341,10 +341,10 @@ class UjinApiClient:
                     wss_data = data.get("data", {})
                     _LOGGER.debug("WebSocket data structure: %s", wss_data)
 
-                    # Try different possible keys for WebSocket URL
-                    wss_url = wss_data.get("url") or wss_data.get("wss_url") or wss_data.get("websocket_url")
-
-                    if wss_url:
+                    # WebSocket URL is in 'wss' key as an array
+                    wss_array = wss_data.get("wss", [])
+                    if wss_array and len(wss_array) > 0:
+                        wss_url = wss_array[0]
                         _LOGGER.info("Got WebSocket URL: %s", wss_url)
                         return wss_url
                     else:
