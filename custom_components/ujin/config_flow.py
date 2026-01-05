@@ -87,6 +87,7 @@ class UjinConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if await self._api_client.verify_auth_code(code):
                     # Save token and email for future use
                     token = self._api_client._token
+                    user_token = self._api_client._user_token
 
                     # Try to get area_guid by fetching devices once
                     # This also validates the token
@@ -94,17 +95,19 @@ class UjinConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     area_guid = self._api_client._area_guid
 
                     _LOGGER.info(
-                        "Authentication successful. Token: %s..., area_guid: %s",
+                        "Authentication successful. Token: %s..., user_token: %s..., area_guid: %s",
                         token[:20] if token else "None",
+                        user_token[:20] if user_token else "None",
                         area_guid
                     )
 
-                    # Create entry with token and area_guid
+                    # Create entry with token, user_token and area_guid
                     return self.async_create_entry(
                         title=f"Ujin ({self._email})",
                         data={
                             CONF_EMAIL: self._email,
                             "token": token,
+                            "user_token": user_token,
                             "area_guid": area_guid,
                         },
                     )

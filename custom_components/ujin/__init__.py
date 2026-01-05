@@ -31,10 +31,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         session=None,  # Will be created by the client
     )
 
-    # Restore token and area_guid from saved data
+    # Restore token, user_token and area_guid from saved data
     if "token" in entry.data:
         api_client._token = entry.data["token"]
         _LOGGER.info("Restored token for %s", entry.data[CONF_EMAIL])
+
+    if "user_token" in entry.data:
+        api_client._user_token = entry.data["user_token"]
+        _LOGGER.info("Restored user_token: %s...", entry.data["user_token"][:20] if entry.data["user_token"] else "None")
 
     if "area_guid" in entry.data:
         api_client._area_guid = entry.data["area_guid"]

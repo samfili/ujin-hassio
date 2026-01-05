@@ -42,7 +42,8 @@ class UjinApiClient:
         """Initialize the API client."""
         self.email = email
         self._session = session
-        self._token: str | None = None
+        self._token: str | None = None  # Main auth token
+        self._user_token: str | None = None  # Apartment-specific token
         self._area_guid: str | None = None
         self._base_url = API_BASE_URL
 
@@ -172,11 +173,19 @@ class UjinApiClient:
 
                     _LOGGER.info("Found %d apartment(s)", len(apartments))
 
-                    # Use first apartment's area_guid
-                    if apartments and not self._area_guid:
-                        self._area_guid = apartments[0].get("area_guid")
-                        _LOGGER.info("Extracted area_guid: %s from apartment '%s'",
-                                    self._area_guid, apartments[0].get("title", "Unknown"))
+                    # Use first apartment's area_guid and user_token
+                    if apartments:
+                        if not self._area_guid:
+                            self._area_guid = apartments[0].get("area_guid")
+                            _LOGGER.info("Extracted area_guid: %s from apartment '%s'",
+                                        self._area_guid, apartments[0].get("title", "Unknown"))
+
+                        if not self._user_token:
+                            # Try user_token first, fallback to dpr_user_token
+                            self._user_token = apartments[0].get("user_token") or apartments[0].get("dpr_user_token")
+                            if self._user_token:
+                                _LOGGER.info("Extracted user_token: %s... from apartment",
+                                            self._user_token[:20] if self._user_token else "None")
 
                     return apartments
                 else:
@@ -194,10 +203,14 @@ class UjinApiClient:
 
         session = await self._get_session()
 
+        # Use apartment user_token if available, otherwise fallback to main token
+        token_to_use = self._user_token if self._user_token else self._token
+        _LOGGER.debug("Using token for devices request: %s...", token_to_use[:20] if token_to_use else "None")
+
         try:
             url = f"{self._base_url}{API_DEVICES_MAIN}"
             params = {
-                "token": self._token,
+                "token": token_to_use,
                 "app": API_APP_PARAM,
                 "platform": API_PLATFORM_PARAM,
                 "co2": "1",
@@ -256,13 +269,16 @@ class UjinApiClient:
 
         session = await self._get_session()
 
+        # Use apartment user_token if available, otherwise fallback to main token
+        token_to_use = self._user_token if self._user_token else self._token
+
         try:
             url = f"{self._base_url}{API_SEND_SIGNAL}"
             params = {
                 "serialnumber": device_id,
                 "signal": signal,
                 "state": str(state),
-                "token": self._token,
+                "token": token_to_use,
                 "app": API_APP_PARAM,
                 "platform": API_PLATFORM_PARAM,
                 "uniq_id": "",  # Empty in captured traffic
