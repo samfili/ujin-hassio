@@ -44,30 +44,6 @@ credentials.json
 home-assistant.log
 home-assistant_v2.db
 
-# Python
-venv/
-*.pyc
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
 # Traffic captures
 captures/*.mitm
 captures/*.log
@@ -91,18 +67,3 @@ Thumbs.db
 *.swp
 *.swo
 *~
-
-# IDE
-.vscode/
-.idea/
-*.sublime-project
-*.sublime-workspace
-.vscode/settings.json
-
-# Home Assistant
-*.db
-*.db-journal
-*.log
-.storage/
-deps/
-tts/
