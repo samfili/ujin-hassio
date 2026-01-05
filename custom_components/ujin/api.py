@@ -335,13 +335,20 @@ class UjinApiClient:
 
             async with session.get(url, params=params) as response:
                 data = await response.json()
+                _LOGGER.debug("WebSocket API response: %s", data)
+
                 if data.get("error") == 0:
-                    wss_url = data.get("data", {}).get("url")
+                    wss_data = data.get("data", {})
+                    _LOGGER.debug("WebSocket data structure: %s", wss_data)
+
+                    # Try different possible keys for WebSocket URL
+                    wss_url = wss_data.get("url") or wss_data.get("wss_url") or wss_data.get("websocket_url")
+
                     if wss_url:
                         _LOGGER.info("Got WebSocket URL: %s", wss_url)
                         return wss_url
                     else:
-                        _LOGGER.error("No WebSocket URL in response")
+                        _LOGGER.error("No WebSocket URL in response. Full data: %s", wss_data)
                         return None
                 else:
                     error_msg = data.get("message", "")
