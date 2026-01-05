@@ -179,20 +179,29 @@ class UjinApiClient:
                             _LOGGER.debug("Found %d devices in total_list", len(devices))
                             all_devices.extend(devices)
 
-                    # Extract area_guid from response URL if not set
+                    # Extract area_guid from response if not set
                     if not self._area_guid:
-                        # Try to get area_guid from the response URL
-                        # The API may have redirected with area_guid in query params
-                        from urllib.parse import urlparse, parse_qs
+                        # Try to get area_guid from apartment_id in response
                         try:
-                            parsed_url = urlparse(str(response.url))
-                            query_params = parse_qs(parsed_url.query)
-                            _LOGGER.debug("Response URL params: %s", query_params)
-                            if 'area_guid' in query_params:
-                                self._area_guid = query_params['area_guid'][0]
-                                _LOGGER.info("Extracted area_guid: %s", self._area_guid)
+                            apartment_id = data.get("data", {}).get("json_rules", {}).get("apartment_id")
+                            if apartment_id:
+                                self._area_guid = str(apartment_id)
+                                _LOGGER.info("Extracted area_guid from apartment_id: %s", self._area_guid)
                         except Exception as e:
-                            _LOGGER.debug("Could not extract area_guid from URL: %s", e)
+                            _LOGGER.debug("Could not extract area_guid from apartment_id: %s", e)
+
+                        # Also try from URL params as fallback
+                        if not self._area_guid:
+                            from urllib.parse import urlparse, parse_qs
+                            try:
+                                parsed_url = urlparse(str(response.url))
+                                query_params = parse_qs(parsed_url.query)
+                                _LOGGER.debug("Response URL params: %s", query_params)
+                                if 'area_guid' in query_params:
+                                    self._area_guid = query_params['area_guid'][0]
+                                    _LOGGER.info("Extracted area_guid from URL: %s", self._area_guid)
+                            except Exception as e:
+                                _LOGGER.debug("Could not extract area_guid from URL: %s", e)
 
                     _LOGGER.info("Found %d devices", len(all_devices))
                     return all_devices
