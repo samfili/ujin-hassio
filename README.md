@@ -144,6 +144,21 @@ GET /api/apartment/send-signal/       - Отправка команды устр
 - [ ] Автоскрипты и сценарии Ujin
 - [ ] Поддержка дополнительных типов устройств
 
+## Иконка интеграции
+
+Для отображения иконки интеграции в Home Assistant UI необходимо добавить её в официальный [brands repository](https://github.com/home-assistant/brands).
+
+### Как добавить иконку
+
+1. Форкните https://github.com/home-assistant/brands
+2. Создайте папку `custom_integrations/ujin/`
+3. Скопируйте файлы из папки `brands_submission/ujin/`:
+   - `icon.png` (256×256)
+   - `icon@2x.png` (512×512)
+4. Создайте Pull Request
+
+Подготовленные файлы находятся в папке `brands_submission/`.
+
 ## Разработка
 
 ### Требования
