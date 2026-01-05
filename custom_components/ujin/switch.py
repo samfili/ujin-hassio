@@ -52,6 +52,9 @@ class UjinSwitch(CoordinatorEntity, SwitchEntity):
         self._device_data = device_data
         self._attr_unique_id = f"{device_data['id']}_{device_data['signal']}"
         self._attr_name = device_data["name"]
+        # Initialize optimistic state from device data
+        controls = device_data.get("controls", [])
+        self._attr_is_on = controls[0].get("value", 0) == 1 if controls else False
 
     @property
     def device_info(self):
@@ -62,20 +65,6 @@ class UjinSwitch(CoordinatorEntity, SwitchEntity):
             "manufacturer": self._device_data.get("specification", "Ujin"),
             "model": self._device_data.get("model_title", "Unknown"),
         }
-
-    @property
-    def is_on(self) -> bool:
-        """Return True if entity is on."""
-        # Find current device in coordinator data
-        for device in self.coordinator.data:
-            if (
-                device["id"] == self._device_data["id"]
-                and device["signal"] == self._device_data["signal"]
-            ):
-                controls = device.get("controls", [])
-                if controls:
-                    return controls[0].get("value", 0) == 1
-        return False
 
     @property
     def available(self) -> bool:
@@ -148,11 +137,11 @@ class UjinSwitch(CoordinatorEntity, SwitchEntity):
         )
 
         if success:
-            # Immediately update local state for instant UI feedback
-            if self._device_data.get("controls"):
-                self._device_data["controls"][0]["value"] = 1
-            # Write state to Home Assistant immediately to update history
+            # Optimistically update state for instant UI feedback
+            self._attr_is_on = True
             self.async_write_ha_state()
+            # Request coordinator refresh to sync with real device state
+            await self.coordinator.async_request_refresh()
         else:
             _LOGGER.error("Failed to turn on %s", self._attr_name)
 
@@ -170,15 +159,26 @@ class UjinSwitch(CoordinatorEntity, SwitchEntity):
         )
 
         if success:
-            # Immediately update local state for instant UI feedback
-            if self._device_data.get("controls"):
-                self._device_data["controls"][0]["value"] = 0
-            # Write state to Home Assistant immediately to update history
+            # Optimistically update state for instant UI feedback
+            self._attr_is_on = False
             self.async_write_ha_state()
+            # Request coordinator refresh to sync with real device state
+            await self.coordinator.async_request_refresh()
         else:
             _LOGGER.error("Failed to turn off %s", self._attr_name)
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
+        # Update local state from real coordinator data
+        for device in self.coordinator.data:
+            if (
+                device["id"] == self._device_data["id"]
+                and device["signal"] == self._device_data["signal"]
+            ):
+                controls = device.get("controls", [])
+                if controls:
+                    # Sync _attr_is_on with real device state
+                    self._attr_is_on = controls[0].get("value", 0) == 1
+                break
         self.async_write_ha_state()
